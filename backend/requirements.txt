@@ -10,7 +10,7 @@ PyJWT==2.8.0
 # ML / Computer Vision
 tensorflow==2.15.0
 numpy==1.26.4
-opencv-python==4.9.0.80
+opencv-python-headless==4.9.0.80
 pillow==10.2.0
 
 # ML helpers
@@ -28,6 +28,7 @@ Flask-Mail==0.10.0
 Flask-Limiter==3.5.0
 
 # Background scheduler (file cleanup cron)
+# (APScheduler requires greenlet/gevent under some setups, standard is fine)
 APScheduler==3.10.4
 
 # CSV export
@@ -35,3 +36,6 @@ pandas==2.2.0
 
 # Environment
 python-dotenv==1.0.0
+
+# Production WSGI Server
+gunicorn==21.2.0

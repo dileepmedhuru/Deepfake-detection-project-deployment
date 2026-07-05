@@ -13,7 +13,10 @@ class Config:
 
     # ── Database ───────────────────────────────────────────────
     DATABASE_PATH = BASE_DIR / 'database' / 'deepfake.db'
-    SQLALCHEMY_DATABASE_URI = f'sqlite:///{DATABASE_PATH}'
+    db_url = os.environ.get('DATABASE_URL')
+    if db_url and db_url.startswith('postgres://'):
+        db_url = db_url.replace('postgres://', 'postgresql://', 1)
+    SQLALCHEMY_DATABASE_URI = db_url or f'sqlite:///{DATABASE_PATH}'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     # ── JWT ────────────────────────────────────────────────────

@@ -36,10 +36,10 @@ MODEL_IS_DEMO = True
 def load_ml_model():
     global ML_MODEL, MODEL_IS_DEMO
     try:
-        from tensorflow.keras.models import load_model
         from config import Config
         p = str(Config.MODEL_PATH)
         if os.path.exists(p):
+            from tensorflow.keras.models import load_model
             ML_MODEL = load_model(p)
             try:
                 test_img = np.zeros((1, 224, 224, 3), dtype=np.float32)
@@ -324,8 +324,16 @@ def _classify_result(ml_result: str, ml_confidence: float,
     print(f'🔍 AI-gen gate: score={ai_gen_score}, sat_cv={sat_cv:.3f}, '
           f'faces={faces_detected}, ml_conf={ml_confidence:.1f}%')
 
-    # AI-gen: all three signals required to avoid false positives on Celeb-DF frames
-    if ai_gen_score >= 60 and sat_cv < 0.45 and faces_detected == 0:
+    # AI-gen: allow classification as ai_generated if we meet the score and saturation checks,
+    # permitting faces if the AI-generation score is high (>= 70) to prevent false positives on Celeb-DF.
+    is_ai_gen = False
+    if ai_gen_score >= 60 and sat_cv < 0.45:
+        if faces_detected == 0:
+            is_ai_gen = True
+        elif ai_gen_score >= 70:
+            is_ai_gen = True
+
+    if is_ai_gen:
         ai_conf = round(min(92.0, 55 + ai_gen_score * 0.37), 2)
         print(f'✅ AI-gen: score={ai_gen_score}, sat_cv={sat_cv:.3f}')
         return 'ai_generated', ai_conf, True

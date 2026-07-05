@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: deepfake-detection-system
+    runtime: python
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: gunicorn --chdir backend wsgi:app
+    envVars:
+      - key: FLASK_CONFIG
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: UPLOAD_RETENTION_DAYS
+        value: "7"

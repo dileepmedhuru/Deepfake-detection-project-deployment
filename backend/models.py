@@ -55,7 +55,7 @@ class Detection(db.Model):
     file_name       = db.Column(db.String(255), nullable=False)
     file_type       = db.Column(db.String(10),  nullable=False)   # 'image' | 'video'
     file_path       = db.Column(db.String(500), nullable=False)
-    result          = db.Column(db.String(10),  nullable=False)   # 'real' | 'fake'
+    result          = db.Column(db.String(30),  nullable=False)   # 'real' | 'fake' | 'ai_generated'
     confidence      = db.Column(db.Float,       nullable=False)
     processing_time = db.Column(db.Float,       nullable=False)
     is_demo         = db.Column(db.Boolean, default=False)        # NEW: demo-mode flag
