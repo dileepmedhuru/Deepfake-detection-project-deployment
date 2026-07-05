@@ -16,6 +16,6 @@ backend/uploads/
 D:\Projects\Forgery_detection\uploads\
 
 # Trained CNN model
-ml_models/cnn_model.h5
+# ml_models/cnn_model.h5
 
 database/deepfake.db
