@@ -8,7 +8,7 @@ Werkzeug==3.0.1
 PyJWT==2.8.0
 
 # ML / Computer Vision
-tensorflow==2.15.0
+# tensorflow==2.15.0 (Uncomment if cnn_model.h5 is uploaded and PYTHON_VERSION=3.10.x is set in Render environment)
 numpy==1.26.4
 opencv-python-headless==4.9.0.80
 pillow==10.2.0
