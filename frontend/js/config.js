@@ -1,5 +1,23 @@
 const API_CONFIG = {
-    BASE_URL: '/api',
+    // Dynamic Base URL to support both unified deployments (served by Flask)
+    // and separate deployments (served as a Render Static Site + Render Web Service)
+    BASE_URL: (function() {
+        const storedUrl = localStorage.getItem('backend_url');
+        if (storedUrl) return storedUrl;
+
+        // If running locally, check if we are on a different port than Flask (usually 5000)
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            if (window.location.port !== '5000' && window.location.port !== '') {
+                return 'http://localhost:5000/api';
+            }
+        }
+        
+        // If frontend is deployed as a Render Static Site, you can set the backend URL here:
+        const HARDCODED_BACKEND_URL = ''; 
+        if (HARDCODED_BACKEND_URL) return HARDCODED_BACKEND_URL;
+
+        return '/api';
+    })(),
     ENDPOINTS: {
         SIGNUP:           '/auth/signup',
         LOGIN:            '/auth/login',
@@ -35,6 +53,7 @@ const API = {
     },
     uploadFile(endpoint, file, onProgress) {
         return new Promise((resolve, reject) => {
+            const url  = `${API_CONFIG.BASE_URL}${endpoint}`;
             const xhr  = new XMLHttpRequest();
             const form = new FormData();
             form.append('file', file);
