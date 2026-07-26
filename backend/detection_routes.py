@@ -40,18 +40,32 @@ def load_ml_model():
         p = str(Config.MODEL_PATH)
         if os.path.exists(p):
             from tensorflow.keras.models import load_model
-            ML_MODEL = load_model(p)
+            from tensorflow.keras.layers import BatchNormalization
+
+            # ── Compatibility fix: TF 2.15 saved BatchNormalization with axis=[3]
+            # ── (a list). TF 2.16+ / Keras 3 requires axis to be an int.
+            # ── Injecting a patched subclass via custom_objects fixes this without
+            # ── requiring the model to be re-trained or re-saved.
+            class _FixedBN(BatchNormalization):
+                @classmethod
+                def from_config(cls, config):
+                    axis = config.get('axis')
+                    if isinstance(axis, list):
+                        config['axis'] = axis[0] if axis else -1
+                    return super().from_config(config)
+
+            ML_MODEL = load_model(p, custom_objects={'BatchNormalization': _FixedBN})
             try:
                 test_img = np.zeros((1, 224, 224, 3), dtype=np.float32)
                 test_pred = float(ML_MODEL.predict(test_img, verbose=0)[0][0])
-                print(f'✔ ML Model loaded (test pred={test_pred:.4f})')
+                print(f'[OK] ML Model loaded (test pred={test_pred:.4f})')
             except Exception as ve:
-                print(f'⚠  Model load-time validation failed: {ve}')
+                print(f'[WARN] Model load-time validation failed: {ve}')
             MODEL_IS_DEMO = False
         else:
-            print(f'⚠  Model not found at {p} — DEMO mode.')
+            print(f'[WARN] Model not found at {p} - running in DEMO mode.')
     except Exception as e:
-        print(f'⚠  Could not load model ({e}) — DEMO mode.')
+        print(f'[WARN] Could not load model ({e}) - running in DEMO mode.')
 
 load_ml_model()
 

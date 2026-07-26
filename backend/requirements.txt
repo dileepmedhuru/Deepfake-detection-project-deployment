@@ -28,7 +28,6 @@ Flask-Mail==0.10.0
 Flask-Limiter==3.5.0
 
 # Background scheduler (file cleanup cron)
-# (APScheduler requires greenlet/gevent under some setups, standard is fine)
 APScheduler==3.10.4
 
 # CSV export
@@ -39,3 +38,6 @@ python-dotenv==1.0.0
 
 # Production WSGI Server
 gunicorn==21.2.0
+
+# PostgreSQL support (for Neon / Render / Railway — falls back to SQLite if DATABASE_URL not set)
+psycopg2-binary==2.9.9

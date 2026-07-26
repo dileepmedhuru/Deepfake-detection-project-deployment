@@ -5,8 +5,8 @@ All sends are silent-fail so the app keeps working without SMTP configured.
 """
 
 from flask_mail import Mail, Message
-from flask import current_app
-import jwt
+from flask import current_app, request as flask_request
+import jwt, os
 from datetime import datetime, timedelta
 
 mail = Mail()
@@ -14,6 +14,19 @@ mail = Mail()
 
 def _enabled() -> bool:
     return current_app.config.get('MAIL_ENABLED', False)
+
+
+def _base_url() -> str:
+    """Return the public base URL of the app (no trailing slash)."""
+    # 1. Explicit env var — set this in HF Spaces / Render / Railway secrets
+    env_url = os.environ.get('APP_URL', '').rstrip('/')
+    if env_url:
+        return env_url
+    # 2. Derive from current request host if inside request context
+    try:
+        return flask_request.host_url.rstrip('/')
+    except RuntimeError:
+        return 'http://localhost:5000'
 
 
 # ── Token helpers ──────────────────────────────────────────────────────────
@@ -60,7 +73,7 @@ def send_welcome_email(user_email: str, full_name: str):
             <h2 style="color:#1e293b;">Welcome, {full_name}!</h2>
             <p style="color:#475569;">Your account has been created successfully.
                You can now upload images and videos to detect deepfakes.</p>
-            <a href="http://localhost:5000/dashboard.html"
+            <a href="{_base_url()}/dashboard.html"
                style="display:inline-block;background:#06b6d4;color:white;
                       padding:.75rem 1.5rem;border-radius:8px;text-decoration:none;
                       margin-top:1rem;">
@@ -116,7 +129,7 @@ def send_detection_result_email(user_email: str, full_name: str,
                 <td style="padding:.75rem;font-weight:700;color:{color};">{result.upper()}</td>
               </tr>
             </table>
-            <a href="http://localhost:5000/results.html?id={detection_id}"
+            <a href="{_base_url()}/results.html?id={detection_id}"
                style="display:inline-block;background:#06b6d4;color:white;
                       padding:.75rem 1.5rem;border-radius:8px;text-decoration:none;
                       margin-top:1.5rem;">
@@ -133,7 +146,7 @@ def send_password_reset_email(user_email: str, full_name: str, reset_token: str)
     if not _enabled():
         return
     try:
-        reset_url = f'http://localhost:5000/reset-password.html?token={reset_token}'
+        reset_url = f'{_base_url()}/reset-password.html?token={reset_token}'
         msg = Message(
             subject='Reset Your Password – Deepfake Detector',
             recipients=[user_email],

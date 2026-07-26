@@ -62,7 +62,7 @@ def start_scheduler(app):
     )
 
     _scheduler.start()
-    print(f'✔ File cleanup scheduler started '
+    print(f'[OK] File cleanup scheduler started '
           f'(retention: {retention_days} days, runs daily at 02:00).')
 
     return _scheduler

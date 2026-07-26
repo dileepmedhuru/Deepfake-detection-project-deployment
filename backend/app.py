@@ -45,16 +45,16 @@ def create_app(config_name='development'):
         try:
             db.create_all()
             _seed_default_admin()
-            print('✔ Database ready.')
+            print('[OK] Database ready.')
         except Exception as e:
-            print(f'✗ Database error: {e}')
+            print(f'[ERROR] Database error: {e}')
 
     # File cleanup scheduler
     try:
         from cleanup import start_scheduler
         start_scheduler(app)
     except Exception as e:
-        print(f'⚠  Cleanup scheduler not started: {e}')
+        print(f'[WARN] Cleanup scheduler not started: {e}')
 
     # Frontend
     @app.route('/')
@@ -109,7 +109,7 @@ def _seed_default_admin():
         alphabet = string.ascii_letters + string.digits + '!@#$%'
         admin_password = ''.join(secrets.choice(alphabet) for _ in range(16))
         print('='*60)
-        print('🔐 Default admin account created:')
+        print('Default admin account created:')
         print(f'   Email:    {admin_email}')
         print(f'   Password: {admin_password}')
         print('   Change this at profile.html after first login!')
@@ -124,6 +124,5 @@ def _seed_default_admin():
 
 if __name__ == '__main__':
     app = create_app('development')
-    print('🚀 Starting on http://localhost:5000')
+    print('[OK] Starting on http://localhost:5000')
     app.run(host='0.0.0.0', port=5000, debug=True)
-    
