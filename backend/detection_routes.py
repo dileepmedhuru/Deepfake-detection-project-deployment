@@ -380,15 +380,38 @@ def _classify_result(ml_result: str, ml_confidence: float,
 # FORENSIC ANALYSIS ENGINE  (unchanged from original)
 # ═══════════════════════════════════════════════════════════════════════
 
-def analyze_image_quality(image_path):
+def analyze_image_quality(image_path, img_bgr=None):
+    """
+    PERF FIX (2 changes from original):
+      1. Accepts an already-decoded img_bgr so callers (predict_image) don't
+         force a second cv2.imread() of the same file.
+      2. Heavy per-pixel ops (Laplacian/Canny/Sobel/HSV/skin-mask/blockiness)
+         now run on a working copy capped at 1600px on the long edge instead
+         of the original resolution. A 12MP phone photo was previously
+         processed at full size for every one of these ops; this caps the
+         pixel count without changing behavior on normal-sized images.
+      Also now returns 'face_bbox_orig' (largest face, in ORIGINAL image
+      coordinates) so predict_image() can reuse this detection instead of
+      running the Haar cascade a second time.
+    """
     try:
-        img = cv2.imread(image_path)
-        if img is None:
+        if img_bgr is None:
+            img_bgr = cv2.imread(image_path)
+        img_orig = img_bgr
+        if img_orig is None:
             return None
 
-        h, w    = img.shape[:2]
-        gray    = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        b, g, r = cv2.split(img)
+        h, w = img_orig.shape[:2]  # ORIGINAL dimensions — used for metadata
+
+        MAX_DIM = 1600
+        scale = min(1.0, MAX_DIM / max(h, w))
+        if scale < 1.0:
+            work = cv2.resize(img_orig, (int(w * scale), int(h * scale)))
+        else:
+            work = img_orig
+
+        gray    = cv2.cvtColor(work, cv2.COLOR_BGR2GRAY)
+        b, g, r = cv2.split(work)
 
         blur_score       = float(cv2.Laplacian(gray, cv2.CV_64F).var())
         brightness       = float(np.mean(gray))
@@ -399,7 +422,18 @@ def analyze_image_quality(image_path):
         )
         faces          = face_cascade.detectMultiScale(gray, 1.1, 4)
         faces_detected = len(faces)
-        face_regions   = faces.tolist() if len(faces) > 0 else []
+
+        face_bbox_orig = None
+        if faces_detected > 0:
+            fx, fy, fw, fh = max(faces, key=lambda f: f[2] * f[3])
+            if scale < 1.0:
+                inv = 1.0 / scale
+                fx, fy, fw, fh = int(fx * inv), int(fy * inv), int(fw * inv), int(fh * inv)
+            face_bbox_orig = [int(fx), int(fy), int(fw), int(fh)]
+
+        # face_regions kept in the (possibly scaled) working-image coordinate
+        # space, matching original behavior for anything already consuming it.
+        face_regions = faces.tolist() if len(faces) > 0 else []
 
         edges        = cv2.Canny(gray, 50, 150)
         edge_density = float(np.sum(edges > 0) / edges.size)
@@ -421,16 +455,17 @@ def analyze_image_quality(image_path):
         hist_norm  = hist / (hist.sum() + 1e-9)
         entropy    = float(-np.sum(hist_norm * np.log2(hist_norm + 1e-9)))
 
-        ycrcb      = cv2.cvtColor(img, cv2.COLOR_BGR2YCrCb)
+        ycrcb      = cv2.cvtColor(work, cv2.COLOR_BGR2YCrCb)
         skin_mask  = cv2.inRange(ycrcb, (0, 133, 77), (255, 173, 127))
-        skin_ratio = float(np.sum(skin_mask > 0) / (h * w))
+        skin_ratio = float(np.sum(skin_mask > 0) / skin_mask.size)
 
-        sobelx  = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
-        sobely  = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
+        sobelx   = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
+        sobely   = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
         grad_mag = np.sqrt(sobelx**2 + sobely**2)
         grad_std = float(np.std(grad_mag))
 
-        mid_h, mid_w   = h // 2, w // 2
+        wh, ww = gray.shape[:2]
+        mid_h, mid_w   = wh // 2, ww // 2
         quadrant_means = [
             float(np.mean(gray[:mid_h, :mid_w])),
             float(np.mean(gray[:mid_h, mid_w:])),
@@ -447,8 +482,8 @@ def analyze_image_quality(image_path):
                 cv2.data.haarcascades + 'haarcascade_eye.xml'
             )
             largest_face = max(faces, key=lambda f: f[2] * f[3])
-            fx, fy, fw, fh = largest_face
-            face_roi = gray[fy:fy+fh, fx:fx+fw]
+            wfx, wfy, wfw, wfh = largest_face  # working-space coords
+            face_roi = gray[wfy:wfy+wfh, wfx:wfx+wfw]
 
             rh, rw = face_roi.shape
             if rh >= 4 and rw >= 4:
@@ -464,24 +499,29 @@ def analyze_image_quality(image_path):
             eyes = eye_cascade.detectMultiScale(face_roi, 1.1, 5)
             eye_symmetry_score = int(len(eyes))
 
-        hsv         = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        hsv         = cv2.cvtColor(work, cv2.COLOR_BGR2HSV)
         sat_channel = hsv[:, :, 1].astype(np.float32)
         sat_mean    = float(np.mean(sat_channel))
         sat_cv      = float(np.std(sat_channel) / (sat_mean + 1e-9))
 
-        block_diffs = []
-        for bi in range(8, h - 8, 8):
-            row_diff = float(np.mean(np.abs(
-                gray[bi, :].astype(float) - gray[bi-1, :].astype(float)
-            )))
-            inter = float(np.mean(np.abs(
-                gray[bi-1, :].astype(float) - gray[bi-2, :].astype(float)
-            )))
-            block_diffs.append(row_diff / (inter + 0.1))
-        blockiness = float(np.mean(block_diffs)) if block_diffs else 1.0
+        # Vectorized blockiness (replaces the previous Python row-by-row loop)
+        if wh > 10:
+            rows = np.arange(8, wh - 8, 8)
+            if len(rows) > 0:
+                row_diff = np.mean(np.abs(
+                    gray[rows, :].astype(np.float32) - gray[rows - 1, :].astype(np.float32)
+                ), axis=1)
+                inter = np.mean(np.abs(
+                    gray[rows - 1, :].astype(np.float32) - gray[rows - 2, :].astype(np.float32)
+                ), axis=1)
+                blockiness = float(np.mean(row_diff / (inter + 0.1)))
+            else:
+                blockiness = 1.0
+        else:
+            blockiness = 1.0
 
-        shadow_pct    = float(np.sum(hist[:30]))  / (h * w)
-        highlight_pct = float(np.sum(hist[220:])) / (h * w)
+        shadow_pct    = float(np.sum(hist[:30]))  / (wh * ww)
+        highlight_pct = float(np.sum(hist[220:])) / (wh * ww)
         bytes_per_pixel = float(os.path.getsize(image_path)) / (h * w + 1e-9)
 
         return {
@@ -490,6 +530,7 @@ def analyze_image_quality(image_path):
             'texture_variance':       round(texture_variance,  2),
             'faces_detected':         faces_detected,
             'face_regions':           face_regions,
+            'face_bbox_orig':         face_bbox_orig,
             'edge_density':           round(edge_density,      4),
             'color_consistency':      round(color_consistency, 2),
             'channel_imbalance':      round(channel_imbalance, 2),
@@ -846,8 +887,22 @@ def run_forensic_analysis(quality_metrics, result, confidence):
 # ═══════════════════════════════════════════════════════════════════════
 
 def predict_image(image_path):
-    start = time.time()
-    quality_metrics = analyze_image_quality(image_path)
+    """
+    PERF FIX: image is now decoded once and the face bounding box computed
+    by analyze_image_quality() is reused here instead of running the Haar
+    cascade a second time on the same full-res grayscale image.
+    """
+    start   = time.time()
+    img_bgr = cv2.imread(image_path)
+    if img_bgr is None:
+        quality_metrics = None
+        r, c = _heuristic_confidence(quality_metrics)
+        r, c, _ = _classify_result(r, c, quality_metrics, is_video=False)
+        risk_scores = compute_forensic_risk_scores(quality_metrics)
+        artifacts   = run_forensic_analysis(quality_metrics, r, c) if quality_metrics else []
+        return r, c, round(time.time() - start, 2), True, quality_metrics, artifacts, risk_scores
+
+    quality_metrics = analyze_image_quality(image_path, img_bgr=img_bgr)
 
     if ML_INTERPRETER is None:
         r, c = _heuristic_confidence(quality_metrics)
@@ -857,19 +912,16 @@ def predict_image(image_path):
         return r, c, round(time.time() - start, 2), True, quality_metrics, artifacts, risk_scores
 
     try:
-        img_bgr = cv2.imread(image_path)
-        if img_bgr is None:
-            raise ValueError(f"Cannot read image: {image_path}")
+        # Reuse the face detection already done in analyze_image_quality
+        # instead of running detectMultiScale a second time.
+        face_bbox = quality_metrics.get('face_bbox_orig') if quality_metrics else None
+        faces_count = quality_metrics.get('faces_detected', 0) if quality_metrics else 0
 
-        # Face-crop to match training preprocessing
-        gray_inf  = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
-        fc_inf    = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-        faces_inf = fc_inf.detectMultiScale(gray_inf, 1.1, 4, minSize=(40, 40))
-        if len(faces_inf) > 0:
-            x, y, w, h  = max(faces_inf, key=lambda f: f[2]*f[3])
+        if face_bbox:
+            x, y, w, h = face_bbox
             pad_x = int(w * 0.30); pad_y = int(h * 0.30)
-            x1 = max(0, x-pad_x); y1 = max(0, y-pad_y)
-            x2 = min(img_bgr.shape[1], x+w+pad_x); y2 = min(img_bgr.shape[0], y+h+pad_y)
+            x1 = max(0, x - pad_x); y1 = max(0, y - pad_y)
+            x2 = min(img_bgr.shape[1], x + w + pad_x); y2 = min(img_bgr.shape[0], y + h + pad_y)
             img_crop = img_bgr[y1:y2, x1:x2]
         else:
             h_i, w_i = img_bgr.shape[:2]
@@ -882,7 +934,7 @@ def predict_image(image_path):
         img = np.expand_dims(img, 0)
 
         pred = float(_ml_predict(img)[0][0])
-        print(f'🔍 DEBUG predict_image: raw pred={pred:.6f}, faces_inf={len(faces_inf)}')
+        print(f'🔍 DEBUG predict_image: raw pred={pred:.6f}, faces_inf={faces_count}')
 
         if _is_constant_output_model(pred):
             print(f'⚠  Model returned {pred:.4f} (near 0.5) — using heuristic fallback')
