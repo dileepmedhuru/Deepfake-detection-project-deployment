@@ -37,12 +37,15 @@ MODEL_IS_DEMO = True
 
 
 def _efficientnet_preprocess(img_rgb):
-    """Match tf.keras.applications.efficientnet.preprocess_input used in training."""
-    x = img_rgb.astype(np.float32)
-    x[..., 0] -= 123.68
-    x[..., 1] -= 116.78
-    x[..., 2] -= 103.94
-    return x
+    """
+    tf.keras.applications.efficientnet.preprocess_input is actually a no-op --
+    EfficientNet has Rescaling/Normalization baked into the model itself, so
+    training fed it raw 0-255 pixel values. (The previous version here
+    subtracted ImageNet mean values, which is the ResNet/VGG 'caffe' scheme,
+    NOT EfficientNet's — that was corrupting every prediction, not just
+    deepfakes.)
+    """
+    return img_rgb.astype(np.float32)
 
 
 def _ml_predict(img_batch):
