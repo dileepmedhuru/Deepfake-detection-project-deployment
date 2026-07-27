@@ -69,7 +69,7 @@ def load_ml_model():
         except ImportError:
             from tensorflow.lite.python.interpreter import Interpreter
 
-        ML_INTERPRETER = Interpreter(model_path=p)
+        ML_INTERPRETER = Interpreter(model_path=p, num_threads=4)
         ML_INTERPRETER.allocate_tensors()
         ML_INPUT_DETAILS = ML_INTERPRETER.get_input_details()
         ML_OUTPUT_DETAILS = ML_INTERPRETER.get_output_details()
