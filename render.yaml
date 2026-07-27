@@ -3,7 +3,7 @@ services:
     name: deepfake-detection-system
     runtime: python
     buildCommand: pip install -r backend/requirements.txt
-    startCommand: gunicorn --chdir backend wsgi:app
+    startCommand: gunicorn --chdir backend --bind 0.0.0.0:$PORT --workers 1 --timeout 120 wsgi:app
     envVars:
       - key: FLASK_CONFIG
         value: production

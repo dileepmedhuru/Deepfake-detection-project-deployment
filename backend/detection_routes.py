@@ -30,40 +30,52 @@ import cv2, numpy as np
 
 detection_bp = Blueprint('detection', __name__, url_prefix='/api/detection')
 
-ML_MODEL = None
+ML_INTERPRETER = None
+ML_INPUT_DETAILS = None
+ML_OUTPUT_DETAILS = None
 MODEL_IS_DEMO = True
 
+
+def _efficientnet_preprocess(img_rgb):
+    """Match tf.keras.applications.efficientnet.preprocess_input used in training."""
+    x = img_rgb.astype(np.float32)
+    x[..., 0] -= 123.68
+    x[..., 1] -= 116.78
+    x[..., 2] -= 103.94
+    return x
+
+
+def _ml_predict(img_batch):
+    """Run TFLite inference. img_batch shape: (1, 224, 224, 3) float32, preprocessed."""
+    ML_INTERPRETER.set_tensor(ML_INPUT_DETAILS[0]['index'], img_batch)
+    ML_INTERPRETER.invoke()
+    return ML_INTERPRETER.get_tensor(ML_OUTPUT_DETAILS[0]['index'])
+
+
 def load_ml_model():
-    global ML_MODEL, MODEL_IS_DEMO
+    global ML_INTERPRETER, ML_INPUT_DETAILS, ML_OUTPUT_DETAILS, MODEL_IS_DEMO
     try:
         from config import Config
         p = str(Config.MODEL_PATH)
-        if os.path.exists(p):
-            from tensorflow.keras.models import load_model
-            from tensorflow.keras.layers import BatchNormalization
-
-            # ── Compatibility fix: TF 2.15 saved BatchNormalization with axis=[3]
-            # ── (a list). TF 2.16+ / Keras 3 requires axis to be an int.
-            # ── Injecting a patched subclass via custom_objects fixes this without
-            # ── requiring the model to be re-trained or re-saved.
-            class _FixedBN(BatchNormalization):
-                @classmethod
-                def from_config(cls, config):
-                    axis = config.get('axis')
-                    if isinstance(axis, list):
-                        config['axis'] = axis[0] if axis else -1
-                    return super().from_config(config)
-
-            ML_MODEL = load_model(p, custom_objects={'BatchNormalization': _FixedBN})
-            try:
-                test_img = np.zeros((1, 224, 224, 3), dtype=np.float32)
-                test_pred = float(ML_MODEL.predict(test_img, verbose=0)[0][0])
-                print(f'[OK] ML Model loaded (test pred={test_pred:.4f})')
-            except Exception as ve:
-                print(f'[WARN] Model load-time validation failed: {ve}')
-            MODEL_IS_DEMO = False
-        else:
+        if not os.path.exists(p):
             print(f'[WARN] Model not found at {p} - running in DEMO mode.')
+            return
+
+        try:
+            from tflite_runtime.interpreter import Interpreter
+        except ImportError:
+            from tensorflow.lite.python.interpreter import Interpreter
+
+        ML_INTERPRETER = Interpreter(model_path=p)
+        ML_INTERPRETER.allocate_tensors()
+        ML_INPUT_DETAILS = ML_INTERPRETER.get_input_details()
+        ML_OUTPUT_DETAILS = ML_INTERPRETER.get_output_details()
+
+        test = _efficientnet_preprocess(np.zeros((224, 224, 3), dtype=np.float32))
+        test = np.expand_dims(test, 0)
+        test_pred = float(_ml_predict(test)[0][0])
+        print(f'[OK] TFLite model loaded (test pred={test_pred:.4f})')
+        MODEL_IS_DEMO = False
     except Exception as e:
         print(f'[WARN] Could not load model ({e}) - running in DEMO mode.')
 
@@ -834,7 +846,7 @@ def predict_image(image_path):
     start = time.time()
     quality_metrics = analyze_image_quality(image_path)
 
-    if ML_MODEL is None:
+    if ML_INTERPRETER is None:
         r, c = _heuristic_confidence(quality_metrics)
         r, c, reclassified = _classify_result(r, c, quality_metrics, is_video=False)
         risk_scores = compute_forensic_risk_scores(quality_metrics)
@@ -863,10 +875,10 @@ def predict_image(image_path):
 
         img = cv2.resize(img_crop, (224, 224))
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        img = img.astype(np.float32)
+        img = _efficientnet_preprocess(img)
         img = np.expand_dims(img, 0)
 
-        pred = float(ML_MODEL.predict(img, verbose=0)[0][0])
+        pred = float(_ml_predict(img)[0][0])
         print(f'🔍 DEBUG predict_image: raw pred={pred:.6f}, faces_inf={len(faces_inf)}')
 
         if _is_constant_output_model(pred):
@@ -919,7 +931,7 @@ def predict_video(video_path, num_frames=10):
     risk_scores     = {}
     forensic_clues  = []
 
-    if ML_MODEL is None:
+    if ML_INTERPRETER is None:
         r, c = _demo_prediction()
         return r, c, round(time.time() - start, 2), True, quality_metrics, forensic_clues, risk_scores
 
@@ -954,8 +966,8 @@ def predict_video(video_path, num_frames=10):
                 margin = min(h_f, w_f) // 4
                 crop = frame[margin:h_f-margin, margin:w_f-margin]
             resized = cv2.resize(crop, (224, 224))
-            rgb     = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB).astype(np.float32)
-            preds.append(float(ML_MODEL.predict(np.expand_dims(rgb, 0), verbose=0)[0][0]))
+            rgb     = _efficientnet_preprocess(cv2.cvtColor(resized, cv2.COLOR_BGR2RGB))
+            preds.append(float(_ml_predict(np.expand_dims(rgb, 0))[0][0]))
 
         cap.release()
         avg = float(np.mean(preds)) if preds else 0.5

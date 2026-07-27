@@ -70,7 +70,11 @@ def create_app(config_name='development'):
 
     @app.route('/health')
     def health():
-        return jsonify({'status': 'healthy'}), 200
+        from detection_routes import MODEL_IS_DEMO
+        return jsonify({
+            'status': 'healthy',
+            'ml_model_loaded': not MODEL_IS_DEMO,
+        }), 200
 
     # Error handlers
     @app.errorhandler(404)

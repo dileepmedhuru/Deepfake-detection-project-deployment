@@ -35,7 +35,7 @@ class Config:
     UPLOAD_RETENTION_DAYS = int(os.environ.get('UPLOAD_RETENTION_DAYS', 7))
 
     # ── ML Model ───────────────────────────────────────────────
-    MODEL_PATH = BASE_DIR / 'ml_models' / 'cnn_model.h5'
+    MODEL_PATH = BASE_DIR / 'ml_models' / 'cnn_model.tflite'
 
     # ── Email (Flask-Mail) ─────────────────────────────────────
     MAIL_SERVER   = os.environ.get('MAIL_SERVER',   'smtp.gmail.com')
