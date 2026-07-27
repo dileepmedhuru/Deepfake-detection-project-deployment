@@ -56,6 +56,7 @@ def verify_reset_token(token: str):
 
 def send_welcome_email(user_email: str, full_name: str):
     if not _enabled():
+        print('[Email] Skipped — MAIL_ENABLED is False (MAIL_USERNAME not set in environment).')
         return
     try:
         msg = Message(
@@ -93,6 +94,7 @@ def send_detection_result_email(user_email: str, full_name: str,
                                  file_name: str, result: str,
                                  confidence: float, detection_id: int):
     if not _enabled():
+        print('[Email] Skipped — MAIL_ENABLED is False (MAIL_USERNAME not set in environment).')
         return
     try:
         is_fake   = result.lower() == 'fake'
@@ -144,6 +146,7 @@ def send_detection_result_email(user_email: str, full_name: str,
 
 def send_password_reset_email(user_email: str, full_name: str, reset_token: str):
     if not _enabled():
+        print('[Email] Skipped — MAIL_ENABLED is False (MAIL_USERNAME not set in environment).')
         return
     try:
         reset_url = f'{_base_url()}/reset-password.html?token={reset_token}'

@@ -69,7 +69,7 @@ def load_ml_model():
         except ImportError:
             from tensorflow.lite.python.interpreter import Interpreter
 
-        ML_INTERPRETER = Interpreter(model_path=p, num_threads=4)
+        ML_INTERPRETER = Interpreter(model_path=p, num_threads=1)
         ML_INTERPRETER.allocate_tensors()
         ML_INPUT_DETAILS = ML_INTERPRETER.get_input_details()
         ML_OUTPUT_DETAILS = ML_INTERPRETER.get_output_details()
@@ -948,6 +948,7 @@ def predict_video(video_path, num_frames=10):
 
         preds        = []
         frame_images = []
+        fc           = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
         for idx in idxs:
             cap.set(cv2.CAP_PROP_POS_FRAMES, int(idx))
@@ -956,7 +957,6 @@ def predict_video(video_path, num_frames=10):
                 continue
             frame_images.append(frame.copy())
             gray_f  = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            fc      = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
             faces_f = fc.detectMultiScale(gray_f, 1.1, 4, minSize=(60, 60))
             if len(faces_f) > 0:
                 x, y, w, h = max(faces_f, key=lambda f: f[2]*f[3])
