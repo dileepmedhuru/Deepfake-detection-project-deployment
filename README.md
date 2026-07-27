@@ -1,3 +1,12 @@
+---
+title: Deepfake Detection System
+emoji: 🔍
+colorFrom: blue
+colorTo: purple
+sdk: docker
+app_port: 7860
+pinned: false
+---
 # 🔍 Deepfake Detection System
 
 A full-stack AI web application that detects **Deepfake , Real and AI-generated media** from images and videos using deep learning and forensic analysis.
